@@ -2,7 +2,9 @@ from django.db import models
 
 class Restaurant(models.Model):
     name = models.CharField(max_length=100)
-    category = models.CharField(max_length=50) 
+    category = models.CharField(max_length=50)
+    capacity = models.IntegerField(default=20)   # NEW
+    created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return self.name
@@ -23,13 +25,30 @@ class Prediction(models.Model):
     def __str__(self):
         return f"{self.restaurant.name} - {self.wait_time} mins"
     
-from django.db import models
+
 
 class Queue(models.Model):
-    restaurant = models.ForeignKey('Restaurant', on_delete=models.CASCADE)
+    STATUS_CHOICES = [
+        ("waiting", "Waiting"),
+        ("seated", "Seated"),
+        ("left", "Left"),
+    ]
+
+    restaurant = models.ForeignKey(Restaurant, on_delete=models.CASCADE)
     name = models.CharField(max_length=100)
     party_size = models.IntegerField()
-    created_at = models.DateTimeField(auto_now_add=True)
+    joined_at = models.DateTimeField(auto_now_add=True)
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="waiting"
+    )
+
+    position = models.IntegerField(default=0)
 
     def __str__(self):
         return f"{self.name} - {self.restaurant.name}"
+
+    class Meta:
+        ordering = ["joined_at"]
