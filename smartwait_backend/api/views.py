@@ -9,6 +9,7 @@ from .serializers import (
     QueueSerializer
 )
 import random
+from .utils import calculate_wait_time
 
 
 # ---------------- VIEWSETS ---------------- #
@@ -42,14 +43,12 @@ def update_queue_positions(restaurant):
     ).order_by("joined_at")
 
     for index, q in enumerate(waiting, start=1):
-        q.position = index
-        q.save()
+        if q.position != index:
+            q.position = index
+            q.save(update_fields=["position"])
 
 
 def auto_seat_customers(restaurant):
-    """
-    Seat ONLY ONE customer per cycle → realistic flow
-    """
     waiting_queue = Queue.objects.filter(
         restaurant=restaurant,
         status="waiting"
@@ -59,8 +58,15 @@ def auto_seat_customers(restaurant):
 
     if first:
         first.status = "seated"
-        first.position = 0
+        first.position = None
         first.save()
+
+        # ✅ FREE a table (IMPORTANT FIX)
+        restaurant.occupied_tables = max(
+            0,
+            restaurant.occupied_tables - 1
+        )
+        restaurant.save()
 
 
 # ---------------- API FUNCTIONS ---------------- #
@@ -78,6 +84,7 @@ def join_queue(request):
         status="waiting"
     ).count()
 
+    # ✅ Assign correct position
     position = queue_length + 1
 
     entry = Queue.objects.create(
@@ -91,6 +98,11 @@ def join_queue(request):
     update_queue_positions(restaurant)
 
     wait_time = calculate_wait_time(restaurant)
+
+    Prediction.objects.create(
+        restaurant=restaurant,
+        wait_time=wait_time
+    )
 
     return Response({
         "status": "waiting",
@@ -116,42 +128,47 @@ def leave_queue(request):
 
         update_queue_positions(restaurant)
 
+        wait_time = calculate_wait_time(restaurant)
+
+        Prediction.objects.create(
+            restaurant=restaurant,
+            wait_time=wait_time
+        )
+
     return Response({"status": "left"})
-
-
-def calculate_wait_time(restaurant):
-    queue_length = Queue.objects.filter(
-        restaurant=restaurant,
-        status="waiting"
-    ).count()
-
-    avg_time = getattr(restaurant, "avg_dining_time", 10)
-    capacity = getattr(restaurant, "capacity", 10)
-
-    if capacity <= 0:
-        return queue_length * avg_time
-
-    return (queue_length / capacity) * avg_time
 
 
 @api_view(['GET'])
 def predict_wait(request, restaurant_id):
     restaurant = Restaurant.objects.get(id=restaurant_id)
 
-    # ✅ STEP 1: seat ONE person (not all)
+    # ✅ Step 1: simulate seating
     auto_seat_customers(restaurant)
 
-    # ✅ STEP 2: fix queue positions
+    # ✅ Step 2: update queue
     update_queue_positions(restaurant)
 
-    # ✅ STEP 3: calculate wait
+    # ✅ Step 3: calculate wait
     wait_time = calculate_wait_time(restaurant)
 
-    # ✅ STEP 4: slight variation
+    # ✅ Step 4: small variation
     wait_time += random.randint(-2, 2)
     wait_time = max(1, round(wait_time))
 
+    # STORE prediction
+    Prediction.objects.create(
+        restaurant=restaurant,
+        wait_time=wait_time
+    )
+
+    # ✅ Get current front of queue
+    first_waiting = Queue.objects.filter(
+        restaurant=restaurant,
+        status="waiting"
+    ).order_by("joined_at").first()
+
     return Response({
         "wait_time": wait_time,
-        "confidence": random.randint(80, 95)
+        "confidence": random.randint(80, 95),
+        "position": first_waiting.position if first_waiting else 0
     })

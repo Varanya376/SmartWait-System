@@ -54,7 +54,7 @@ class Queue(models.Model):
         default="waiting"
     )
 
-    position = models.IntegerField(default=0)
+    position = models.IntegerField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.name} - {self.restaurant.name}"
