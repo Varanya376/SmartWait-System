@@ -3,7 +3,16 @@ from django.db import models
 class Restaurant(models.Model):
     name = models.CharField(max_length=100)
     category = models.CharField(max_length=50)
-    capacity = models.IntegerField(default=20)   # NEW
+
+    capacity = models.IntegerField(default=20)
+
+    # ADD THESE
+    total_tables = models.IntegerField(default=10)
+    occupied_tables = models.IntegerField(default=5)
+    avg_dining_time = models.IntegerField(default=30)  # minutes
+    lat = models.FloatField(default=51.5074)  # London fallback
+    lng = models.FloatField(default=-0.1278)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
