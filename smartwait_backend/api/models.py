@@ -31,9 +31,10 @@ class Prediction(models.Model):
     restaurant = models.ForeignKey(Restaurant, on_delete=models.CASCADE)
     wait_time = models.FloatField()
 
-    # 🔥 NEW (ML features)
+    # 🔥 ML features
     queue_length = models.IntegerField()
     occupied_tables = models.IntegerField()
+    total_tables = models.IntegerField()   # ✅ ADD THIS
 
     created_at = models.DateTimeField(auto_now_add=True)
 

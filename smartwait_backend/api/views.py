@@ -154,6 +154,7 @@ def leave_queue(request):
 @api_view(['GET'])
 def predict_wait(request, restaurant_id):
     from django.shortcuts import get_object_or_404
+    from api.train_model import train
 
     restaurant = get_object_or_404(Restaurant, id=restaurant_id)
 
@@ -170,13 +171,13 @@ def predict_wait(request, restaurant_id):
     wait_time += random.randint(-2, 2)
     wait_time = max(1, round(wait_time))
 
-    # 🔥 NEW: capture features for ML dataset
+    # 🔥 capture features
     queue_length = Queue.objects.filter(
         restaurant=restaurant,
         status="waiting"
     ).count()
 
-    # 🔥 STORE FULL DATA
+    # 🔥 store data
     Prediction.objects.create(
         restaurant=restaurant,
         wait_time=wait_time,
@@ -184,7 +185,12 @@ def predict_wait(request, restaurant_id):
         occupied_tables=restaurant.occupied_tables
     )
 
-    # 🔥 get current user's position (front of queue)
+    # 🔁 Auto retrain every 20 data points
+    if Prediction.objects.count() % 20 == 0:
+        print("🔁 Retraining model...")
+        train()
+
+    # 🔥 get position
     first_waiting = Queue.objects.filter(
         restaurant=restaurant,
         status="waiting"
