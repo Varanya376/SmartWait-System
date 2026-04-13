@@ -29,7 +29,13 @@ class Table(models.Model):
 
 class Prediction(models.Model):
     restaurant = models.ForeignKey(Restaurant, on_delete=models.CASCADE)
-    wait_time = models.IntegerField()
+    wait_time = models.FloatField()
+
+    # 🔥 NEW (ML features)
+    queue_length = models.IntegerField()
+    occupied_tables = models.IntegerField()
+
+    created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f"{self.restaurant.name} - {self.wait_time} mins"

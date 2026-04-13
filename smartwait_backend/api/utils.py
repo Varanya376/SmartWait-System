@@ -1,11 +1,17 @@
 import joblib
+import os
+from django.conf import settings
 from .models import Queue
 
-# Load model once
+# ✅ Load model safely (absolute path)
+MODEL_PATH = os.path.join(settings.BASE_DIR, "wait_time_model.pkl")
+
 try:
-    model = joblib.load("wait_time_model.pkl")
+    model = joblib.load(MODEL_PATH)
+    print("✅ ML model loaded")
 except:
     model = None
+    print("⚠️ ML model not found, using fallback")
 
 
 def calculate_wait_time(restaurant):
@@ -14,7 +20,7 @@ def calculate_wait_time(restaurant):
         status="waiting"
     ).count()
 
-    # Features for ML
+    # ✅ Feature vector (IMPORTANT)
     features = [[
         restaurant.occupied_tables,
         restaurant.total_tables,
@@ -22,16 +28,33 @@ def calculate_wait_time(restaurant):
         restaurant.avg_dining_time
     ]]
 
-    # Try ML prediction
+    # -------------------------------
+    # 🤖 ML PREDICTION
+    # -------------------------------
     if model:
         try:
             prediction = model.predict(features)[0]
-            return max(0, int(prediction))
-        except:
-            pass
 
-    # Fallback logic (VERY IMPORTANT)
+            # ✅ safety bounds
+            prediction = max(1, min(int(prediction), 120))
+
+            return prediction
+        except Exception as e:
+            print("ML error:", e)
+
+    # -------------------------------
+    # 🔁 FALLBACK LOGIC (IMPROVED)
+    # -------------------------------
     if restaurant.total_tables == 0:
         return 0
 
-    return int((queue_count / restaurant.total_tables) * restaurant.avg_dining_time)
+    # how full restaurant is
+    occupancy_ratio = restaurant.occupied_tables / restaurant.total_tables
+
+    # base wait from queue
+    base_wait = queue_count * (restaurant.avg_dining_time / max(1, restaurant.total_tables))
+
+    # adjust by occupancy
+    wait_time = base_wait * (1 + occupancy_ratio)
+
+    return max(1, int(wait_time))

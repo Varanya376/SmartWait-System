@@ -71,22 +71,30 @@ def auto_seat_customers(restaurant):
 
 # ---------------- API FUNCTIONS ---------------- #
 
+from django.shortcuts import get_object_or_404
+
 @api_view(['POST'])
 def join_queue(request):
     restaurant_id = request.data.get("restaurant")
     name = request.data.get("name")
     party_size = request.data.get("party_size")
 
-    restaurant = Restaurant.objects.get(id=restaurant_id)
+    # ✅ validation
+    if not restaurant_id or not name or not party_size:
+        return Response({"error": "Missing fields"}, status=400)
 
+    restaurant = get_object_or_404(Restaurant, id=restaurant_id)
+
+    # ✅ current queue length
     queue_length = Queue.objects.filter(
         restaurant=restaurant,
         status="waiting"
     ).count()
 
-    # ✅ Assign correct position
+    # ✅ assign position
     position = queue_length + 1
 
+    # ✅ create entry
     entry = Queue.objects.create(
         restaurant=restaurant,
         name=name,
@@ -95,13 +103,18 @@ def join_queue(request):
         status="waiting"
     )
 
+    # ✅ update positions
     update_queue_positions(restaurant)
 
+    # ✅ calculate wait
     wait_time = calculate_wait_time(restaurant)
 
+    # ✅ log ML data (VERY IMPORTANT)
     Prediction.objects.create(
         restaurant=restaurant,
-        wait_time=wait_time
+        wait_time=wait_time,
+        queue_length=queue_length + 1,  # include new user
+        occupied_tables=restaurant.occupied_tables
     )
 
     return Response({
@@ -140,28 +153,38 @@ def leave_queue(request):
 
 @api_view(['GET'])
 def predict_wait(request, restaurant_id):
-    restaurant = Restaurant.objects.get(id=restaurant_id)
+    from django.shortcuts import get_object_or_404
 
-    # ✅ Step 1: simulate seating
+    restaurant = get_object_or_404(Restaurant, id=restaurant_id)
+
+    # Step 1: simulate real flow
     auto_seat_customers(restaurant)
 
-    # ✅ Step 2: update queue
+    # Step 2: update queue positions
     update_queue_positions(restaurant)
 
-    # ✅ Step 3: calculate wait
+    # Step 3: calculate wait
     wait_time = calculate_wait_time(restaurant)
 
-    # ✅ Step 4: small variation
+    # Step 4: small variation
     wait_time += random.randint(-2, 2)
     wait_time = max(1, round(wait_time))
 
-    # STORE prediction
+    # 🔥 NEW: capture features for ML dataset
+    queue_length = Queue.objects.filter(
+        restaurant=restaurant,
+        status="waiting"
+    ).count()
+
+    # 🔥 STORE FULL DATA
     Prediction.objects.create(
         restaurant=restaurant,
-        wait_time=wait_time
+        wait_time=wait_time,
+        queue_length=queue_length,
+        occupied_tables=restaurant.occupied_tables
     )
 
-    # ✅ Get current front of queue
+    # 🔥 get current user's position (front of queue)
     first_waiting = Queue.objects.filter(
         restaurant=restaurant,
         status="waiting"
@@ -172,3 +195,31 @@ def predict_wait(request, restaurant_id):
         "confidence": random.randint(80, 95),
         "position": first_waiting.position if first_waiting else 0
     })
+
+@api_view(['GET'])
+def recommend_restaurants(request):
+    restaurants = Restaurant.objects.all()
+
+    results = []
+
+    for r in restaurants:
+        wait = calculate_wait_time(r)
+
+        # 🔥 simple hybrid score
+        score = (
+            -wait                      # shorter wait = better
+            - r.occupied_tables * 2    # less crowded = better
+        )
+
+        results.append({
+            "id": r.id,
+            "name": r.name,
+            "category": r.category,
+            "score": score,
+            "wait_time": round(wait)
+        })
+
+    # sort best first
+    results = sorted(results, key=lambda x: x["score"], reverse=True)
+
+    return Response(results)

@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from api.views import RestaurantViewSet, TableViewSet, PredictionViewSet, QueueViewSet, join_queue, leave_queue, predict_wait
+from api.views import recommend_restaurants
 
 
 router = DefaultRouter()
@@ -16,4 +17,5 @@ urlpatterns = [
     path('api/join_queue/', join_queue),
     path('api/leave_queue/', leave_queue),
     path("api/predict-wait/<int:restaurant_id>/", predict_wait),
+    path("api/recommend/", recommend_restaurants),
 ]
