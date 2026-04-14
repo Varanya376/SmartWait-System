@@ -29,7 +29,8 @@ def calculate_wait_time(restaurant):
         try:
             data = pd.DataFrame([{
             "occupied_tables": restaurant.occupied_tables,
-            "queue_length": queue_count
+            "queue_length": queue_count,
+            "total_tables": restaurant.total_tables
             }])
 
             prediction = model.predict(data)[0]

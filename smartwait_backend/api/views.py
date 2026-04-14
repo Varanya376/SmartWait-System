@@ -10,6 +10,8 @@ from .serializers import (
 )
 import random
 from .utils import calculate_wait_time
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 
 
 # ---------------- VIEWSETS ---------------- #
@@ -95,7 +97,7 @@ def join_queue(request):
     position = queue_length + 1
 
     # ✅ create entry
-    entry = Queue.objects.create(
+    Queue.objects.create(
         restaurant=restaurant,
         name=name,
         party_size=party_size,
@@ -109,14 +111,32 @@ def join_queue(request):
     # ✅ calculate wait
     wait_time = calculate_wait_time(restaurant)
 
-    # ✅ log ML data (VERY IMPORTANT)
+    # ✅ log ML data
     Prediction.objects.create(
         restaurant=restaurant,
         wait_time=wait_time,
-        queue_length=queue_length + 1,  # include new user
-        occupied_tables=restaurant.occupied_tables
+        queue_length=queue_length + 1,
+        occupied_tables=restaurant.occupied_tables,
+        total_tables=restaurant.total_tables
     )
 
+    # 🔥 SEND WEBSOCKET UPDATE (INSIDE FUNCTION)
+    channel_layer = get_channel_layer()
+
+    async_to_sync(channel_layer.group_send)(
+    "queue_updates",
+    {
+        "type": "send_update",
+        "data": {
+            "restaurant_id": restaurant.id,
+            "event": "joined_queue",
+            "wait_time": round(wait_time),
+            "queue_length": queue_length + 1
+        }
+    }
+)
+
+    # ✅ RETURN RESPONSE (LAST LINE)
     return Response({
         "status": "waiting",
         "position": position,
@@ -145,8 +165,27 @@ def leave_queue(request):
 
         Prediction.objects.create(
             restaurant=restaurant,
-            wait_time=wait_time
+            wait_time=wait_time,
+            queue_length=Queue.objects.filter(
+                restaurant=restaurant,
+                status="waiting"
+            ).count(),
+            occupied_tables=restaurant.occupied_tables,
+            total_tables=restaurant.total_tables
         )
+    # 🔥 SEND WEBSOCKET UPDATE
+    channel_layer = get_channel_layer()
+
+    async_to_sync(channel_layer.group_send)(
+        "queue_updates",
+        {
+            "type": "send_update",
+            "data": {
+                "restaurant_id": restaurant.id,
+                "event": "left_queue"
+        }
+    }
+)
 
     return Response({"status": "left"})
 
@@ -182,7 +221,8 @@ def predict_wait(request, restaurant_id):
         restaurant=restaurant,
         wait_time=wait_time,
         queue_length=queue_length,
-        occupied_tables=restaurant.occupied_tables
+        occupied_tables=restaurant.occupied_tables,
+        total_tables=restaurant.total_tables
     )
 
     # 🔁 Auto retrain every 20 data points
@@ -195,6 +235,20 @@ def predict_wait(request, restaurant_id):
         restaurant=restaurant,
         status="waiting"
     ).order_by("joined_at").first()
+
+    channel_layer = get_channel_layer()
+
+    async_to_sync(channel_layer.group_send)(
+        "queue_updates",
+        {
+            "type": "send_update",
+            "data": {
+                "restaurant_id": restaurant.id,
+                "wait_time": wait_time,
+                "position": first_waiting.position if first_waiting else 0
+        }
+    }
+)
 
     return Response({
         "wait_time": wait_time,

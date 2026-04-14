@@ -18,7 +18,7 @@ def train():
     y = df["wait_time"]
 
     # 🔥 Train model
-    model = RandomForestRegressor()
+    model = RandomForestRegressor(n_estimators=100)
     model.fit(X, y)
 
     # 💾 Save model
