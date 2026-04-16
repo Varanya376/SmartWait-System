@@ -12,6 +12,19 @@ import random
 from .utils import calculate_wait_time
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
+from django.shortcuts import get_object_or_404
+from rest_framework.views import APIView
+from django.contrib.auth import get_user_model
+from django.contrib.auth.hashers import make_password
+from rest_framework.permissions import IsAuthenticated
+from django.contrib.auth import authenticate, login
+from django.contrib.auth import logout
+from rest_framework.decorators import permission_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.decorators import permission_classes
+from django.views.decorators.csrf import csrf_exempt
+from rest_framework.authentication import SessionAuthentication, BasicAuthentication
+from rest_framework.decorators import authentication_classes
 
 
 # ---------------- VIEWSETS ---------------- #
@@ -35,8 +48,27 @@ class QueueViewSet(viewsets.ModelViewSet):
     queryset = Queue.objects.all()
     serializer_class = QueueSerializer
 
+class StaffDashboardView(APIView):
+    permission_classes = [IsAuthenticated]
+
+class CsrfExemptSessionAuthentication(SessionAuthentication):
+    def enforce_csrf(self, request):
+        return  
 
 # ---------------- HELPER FUNCTIONS ---------------- #
+
+def sync_restaurant_tables(restaurant):
+    occupied = Table.objects.filter(
+        restaurant=restaurant,
+        status__in=["OCCUPIED", "RESERVED"]
+    ).count()
+
+    total = Table.objects.filter(restaurant=restaurant).count()
+
+    restaurant.occupied_tables = occupied
+    restaurant.total_tables = total
+    restaurant.save()
+
 
 def update_queue_positions(restaurant):
     waiting = Queue.objects.filter(
@@ -50,30 +82,104 @@ def update_queue_positions(restaurant):
             q.save(update_fields=["position"])
 
 
-def auto_seat_customers(restaurant):
-    waiting_queue = Queue.objects.filter(
-        restaurant=restaurant,
-        status="waiting"
-    ).order_by("joined_at")
+def send_realtime_update(restaurant, event, wait_time):
+    channel_layer = get_channel_layer()
 
-    first = waiting_queue.first()
-
-    if first:
-        first.status = "seated"
-        first.position = None
-        first.save()
-
-        # ✅ FREE a table (IMPORTANT FIX)
-        restaurant.occupied_tables = max(
-            0,
-            restaurant.occupied_tables - 1
-        )
-        restaurant.save()
+    async_to_sync(channel_layer.group_send)(
+        "queue_updates",
+        {
+            "type": "send_update",
+            "message": event,
+            "wait_time": wait_time,
+            "restaurant_id": restaurant.id
+        }
+    )
 
 
 # ---------------- API FUNCTIONS ---------------- #
 
-from django.shortcuts import get_object_or_404
+User = get_user_model()
+
+@api_view(['POST'])
+def register(request):
+    data = request.data
+
+    if User.objects.filter(email=data["email"]).exists():
+        return Response(
+            {"error": "User already exists"},
+            status=400
+        )
+
+    user = User.objects.create(
+        username=data["email"],
+        email=data["email"],
+        password=make_password(data["password"]),
+        role=data.get("role", "customer")
+    )
+
+    return Response({"message": "User created"})
+
+@api_view(['POST'])
+@authentication_classes([CsrfExemptSessionAuthentication])
+@permission_classes([AllowAny])
+def login_view(request):
+    email = request.data.get("email")
+    password = request.data.get("password")
+
+    user = authenticate(request, username=email, password=password)
+
+    if user is not None:
+        login(request, user)
+
+        return Response({
+            "message": "Logged in",
+            "role": user.role,
+            "restaurant_id": user.restaurant.id if user.restaurant else None
+        })
+
+    return Response({"error": "Invalid credentials"}, status=400)
+
+@api_view(['POST'])
+def logout_view(request):
+    logout(request)
+    return Response({"message": "Logged out"})
+
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+
+@api_view(['POST'])
+def forgot_password(request):
+    email = request.data.get("email")
+
+    user = User.objects.filter(email=email).first()
+
+    if user:
+        user.set_password("newpassword123")  # simulate reset
+        user.save()
+
+    return Response({"message": "Password reset (simulated)"})
+
+@api_view(['POST'])
+def simulate_rush(request):
+    restaurant_id = request.data.get("restaurant")
+
+    restaurant = get_object_or_404(Restaurant, id=restaurant_id)
+
+    for i in range(5):
+        Queue.objects.create(
+            restaurant=restaurant,
+            name=f"Rush {i}",
+            party_size=random.randint(1, 5),
+            status="waiting"
+)
+
+    update_queue_positions(restaurant)
+
+    wait_time = calculate_wait_time(restaurant)
+
+    send_realtime_update(restaurant, "update", wait_time)
+
+    return Response({"message": "Rush simulated"})
 
 @api_view(['POST'])
 def join_queue(request):
@@ -81,22 +187,18 @@ def join_queue(request):
     name = request.data.get("name")
     party_size = request.data.get("party_size")
 
-    # ✅ validation
     if not restaurant_id or not name or not party_size:
         return Response({"error": "Missing fields"}, status=400)
 
     restaurant = get_object_or_404(Restaurant, id=restaurant_id)
 
-    # ✅ current queue length
     queue_length = Queue.objects.filter(
         restaurant=restaurant,
         status="waiting"
     ).count()
 
-    # ✅ assign position
     position = queue_length + 1
 
-    # ✅ create entry
     Queue.objects.create(
         restaurant=restaurant,
         name=name,
@@ -105,13 +207,10 @@ def join_queue(request):
         status="waiting"
     )
 
-    # ✅ update positions
     update_queue_positions(restaurant)
 
-    # ✅ calculate wait
     wait_time = calculate_wait_time(restaurant)
 
-    # ✅ log ML data
     Prediction.objects.create(
         restaurant=restaurant,
         wait_time=wait_time,
@@ -120,29 +219,13 @@ def join_queue(request):
         total_tables=restaurant.total_tables
     )
 
-    # 🔥 SEND WEBSOCKET UPDATE (INSIDE FUNCTION)
-    channel_layer = get_channel_layer()
+    send_realtime_update(restaurant, "update", wait_time)
 
-    async_to_sync(channel_layer.group_send)(
-    "queue_updates",
-    {
-        "type": "send_update",
-        "data": {
-            "restaurant_id": restaurant.id,
-            "event": "joined_queue",
-            "wait_time": round(wait_time),
-            "queue_length": queue_length + 1
-        }
-    }
-)
-
-    # ✅ RETURN RESPONSE (LAST LINE)
     return Response({
         "status": "waiting",
         "position": position,
         "estimated_wait": round(wait_time)
     })
-
 
 @api_view(['POST'])
 def leave_queue(request):
@@ -153,70 +236,56 @@ def leave_queue(request):
         status="waiting"
     ).order_by("joined_at").first()
 
-    if entry:
-        restaurant = entry.restaurant
+    if not entry:
+        return Response({"status": "no one in queue"})
 
-        entry.status = "left"
-        entry.save()
+    restaurant = entry.restaurant
 
-        update_queue_positions(restaurant)
+    entry.status = "left"
+    entry.save()
 
-        wait_time = calculate_wait_time(restaurant)
+    update_queue_positions(restaurant)
 
-        Prediction.objects.create(
+    wait_time = calculate_wait_time(restaurant)
+
+    Prediction.objects.create(
+        restaurant=restaurant,
+        wait_time=wait_time,
+        queue_length=Queue.objects.filter(
             restaurant=restaurant,
-            wait_time=wait_time,
-            queue_length=Queue.objects.filter(
-                restaurant=restaurant,
-                status="waiting"
-            ).count(),
-            occupied_tables=restaurant.occupied_tables,
-            total_tables=restaurant.total_tables
-        )
-    # 🔥 SEND WEBSOCKET UPDATE
-    channel_layer = get_channel_layer()
-
-    async_to_sync(channel_layer.group_send)(
-        "queue_updates",
-        {
-            "type": "send_update",
-            "data": {
-                "restaurant_id": restaurant.id,
-                "event": "left_queue"
-        }
-    }
-)
+            status="waiting"
+        ).count(),
+        occupied_tables=restaurant.occupied_tables,
+        total_tables=restaurant.total_tables
+    )
 
     return Response({"status": "left"})
 
-
 @api_view(['GET'])
 def predict_wait(request, restaurant_id):
-    from django.shortcuts import get_object_or_404
-    from api.train_model import train
-
     restaurant = get_object_or_404(Restaurant, id=restaurant_id)
 
-    # Step 1: simulate real flow
-    auto_seat_customers(restaurant)
-
-    # Step 2: update queue positions
     update_queue_positions(restaurant)
+    sync_restaurant_tables(restaurant)
 
-    # Step 3: calculate wait
     wait_time = calculate_wait_time(restaurant)
 
-    # Step 4: small variation
-    wait_time += random.randint(-2, 2)
-    wait_time = max(1, round(wait_time))
-
-    # 🔥 capture features
     queue_length = Queue.objects.filter(
         restaurant=restaurant,
         status="waiting"
     ).count()
 
-    # 🔥 store data
+    # 🔥 NEVER allow unrealistic wait if queue exists
+    if queue_length > 0:
+         wait_time = max(5, round(wait_time))
+    else:
+        wait_time = max(0, round(wait_time))
+
+    queue_length = Queue.objects.filter(
+        restaurant=restaurant,
+        status="waiting"
+    ).count()
+
     Prediction.objects.create(
         restaurant=restaurant,
         wait_time=wait_time,
@@ -225,35 +294,10 @@ def predict_wait(request, restaurant_id):
         total_tables=restaurant.total_tables
     )
 
-    # 🔁 Auto retrain every 20 data points
-    if Prediction.objects.count() % 20 == 0:
-        print("🔁 Retraining model...")
-        train()
-
-    # 🔥 get position
-    first_waiting = Queue.objects.filter(
-        restaurant=restaurant,
-        status="waiting"
-    ).order_by("joined_at").first()
-
-    channel_layer = get_channel_layer()
-
-    async_to_sync(channel_layer.group_send)(
-        "queue_updates",
-        {
-            "type": "send_update",
-            "data": {
-                "restaurant_id": restaurant.id,
-                "wait_time": wait_time,
-                "position": first_waiting.position if first_waiting else 0
-        }
-    }
-)
-
     return Response({
         "wait_time": wait_time,
         "confidence": random.randint(80, 95),
-        "position": first_waiting.position if first_waiting else 0
+        "position": queue_length
     })
 
 @api_view(['GET'])
@@ -265,11 +309,7 @@ def recommend_restaurants(request):
     for r in restaurants:
         wait = calculate_wait_time(r)
 
-        # 🔥 simple hybrid score
-        score = (
-            -wait                      # shorter wait = better
-            - r.occupied_tables * 2    # less crowded = better
-        )
+        score = (-wait - r.occupied_tables * 2)
 
         results.append({
             "id": r.id,
@@ -279,7 +319,190 @@ def recommend_restaurants(request):
             "wait_time": round(wait)
         })
 
-    # sort best first
     results = sorted(results, key=lambda x: x["score"], reverse=True)
 
     return Response(results)
+
+
+# ---------------- STAFF DASHBOARD ---------------- #
+
+@api_view(['GET'])
+def staff_dashboard(request, restaurant_id):
+
+    if not request.user.is_authenticated:
+        return Response({"error": "Not logged in"}, status=401)
+
+    print("USER:", request.user)
+    print("ROLE:", request.user.role)
+    print("USER RESTAURANT:", request.user.restaurant)
+    print("USER RESTAURANT ID:", getattr(request.user.restaurant, "id", None))
+    print("URL ID:", restaurant_id)
+
+    # 🔐 ROLE CHECK
+    if request.user.role != "staff":
+        return Response({"error": "Unauthorized"}, status=403)
+
+    # 🔐 USER MUST HAVE RESTAURANT
+    if not request.user.restaurant:
+        return Response({"error": "No restaurant assigned"}, status=403)
+
+    # 🔐 MUST MATCH RESTAURANT ID
+    if request.user.restaurant.id != int(restaurant_id):
+        return Response({"error": "Wrong restaurant"}, status=403)
+
+    restaurant = get_object_or_404(Restaurant, id=restaurant_id)
+
+    tables = Table.objects.filter(restaurant=restaurant)
+
+    # 🔥 FIX: ensure positions are correct BEFORE sending to frontend
+    update_queue_positions(restaurant)
+
+    queue = Queue.objects.filter(
+    restaurant=restaurant,
+    status="waiting"
+    ).order_by("joined_at")
+
+    sync_restaurant_tables(restaurant)
+
+    occupied = restaurant.occupied_tables
+    free = restaurant.total_tables - occupied
+
+    wait_time = calculate_wait_time(restaurant)
+
+    return Response({
+        "restaurant": restaurant.name,
+        "tables": TableSerializer(tables, many=True).data,
+        "queue": QueueSerializer(queue, many=True).data,
+        "occupied_tables": occupied,
+        "free_tables": free,
+        "wait_time": wait_time
+    })
+
+# ---------------- TABLE UPDATE ---------------- #
+
+@api_view(['PATCH'])
+@authentication_classes([CsrfExemptSessionAuthentication, BasicAuthentication])
+@permission_classes([AllowAny])
+def update_table_status(request, table_id):
+    table = get_object_or_404(Table, id=table_id)
+
+    new_status = request.data.get("status")
+
+    if new_status not in ["FREE", "OCCUPIED", "RESERVED"]:
+        return Response({"error": "Invalid status"}, status=400)
+
+    table.status = new_status.upper()
+    table.save()
+
+    restaurant = table.restaurant
+    sync_restaurant_tables(restaurant)
+
+    wait_time = calculate_wait_time(restaurant)
+
+    Prediction.objects.create(
+        restaurant=restaurant,
+        wait_time=wait_time,
+        queue_length=Queue.objects.filter(
+            restaurant=restaurant,
+            status="waiting"
+        ).count(),
+        occupied_tables=restaurant.occupied_tables,
+        total_tables=restaurant.total_tables
+    )
+
+    send_realtime_update(restaurant, "update", wait_time)
+
+    return Response({
+    "message": "Table updated",
+    "status": table.status,
+    "wait_time": wait_time
+})
+
+
+# ---------------- BILLING ---------------- #
+
+@api_view(['POST'])
+@authentication_classes([CsrfExemptSessionAuthentication])
+@permission_classes([AllowAny])
+def billing_complete(request):
+    table_id = request.data.get("table_id")
+
+    table = get_object_or_404(Table, id=table_id)
+
+    table.status = "FREE"
+    table.save()
+
+    restaurant = table.restaurant
+    sync_restaurant_tables(restaurant)
+
+    wait_time = calculate_wait_time(restaurant)
+
+    Prediction.objects.create(
+        restaurant=restaurant,
+        wait_time=wait_time,
+        queue_length=Queue.objects.filter(
+            restaurant=restaurant,
+            status="waiting"
+        ).count(),
+        occupied_tables=restaurant.occupied_tables,
+        total_tables=restaurant.total_tables
+    )
+
+    send_realtime_update(restaurant, "update", wait_time)
+
+    return Response({"message": "Billing simulated"})
+
+# ---------------- SEAT CUSTOMER ---------------- #
+
+@api_view(['POST'])
+@authentication_classes([CsrfExemptSessionAuthentication])
+@permission_classes([AllowAny])
+def seat_customer(request):
+    queue_id = request.data.get("queue_id")
+
+    entry = get_object_or_404(Queue, id=queue_id)
+
+    restaurant = entry.restaurant
+
+    # mark seated
+    entry.status = "seated"
+    entry.position = None
+    entry.save()
+
+    # free one table OR mark occupied (your logic choice)
+    table = Table.objects.filter(
+        restaurant=restaurant,
+        status="FREE"
+    ).first()
+
+    if table:
+        table.status = "OCCUPIED"
+        table.save()
+
+    update_queue_positions(restaurant)
+    sync_restaurant_tables(restaurant)
+
+    wait_time = calculate_wait_time(restaurant)
+
+    Prediction.objects.create(
+        restaurant=restaurant,
+        wait_time=wait_time,
+        queue_length=Queue.objects.filter(
+            restaurant=restaurant,
+            status="waiting"
+        ).count(),
+        occupied_tables=restaurant.occupied_tables,
+        total_tables=restaurant.total_tables
+    )
+    next_customer = Queue.objects.filter(
+        restaurant=restaurant,
+        status="waiting",
+        position=1
+    ).first()
+
+    if next_customer:
+         print("🔔 Customer ready!")
+
+    send_realtime_update(restaurant, "update", wait_time)
+
+    return Response({"message": "Customer seated"})

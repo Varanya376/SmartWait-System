@@ -1,4 +1,18 @@
 from django.db import models
+from django.contrib.auth.models import AbstractUser
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+
+
+class User(AbstractUser):
+    role = models.CharField(max_length=20, default="customer")
+
+    restaurant = models.ForeignKey(
+        "Restaurant",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL
+    )
 
 class Restaurant(models.Model):
     name = models.CharField(max_length=100)
@@ -17,14 +31,42 @@ class Restaurant(models.Model):
 
     def __str__(self):
         return self.name
+    
 
 
 class Table(models.Model):
     restaurant = models.ForeignKey(Restaurant, on_delete=models.CASCADE)
-    seats = models.IntegerField()
+    seats = models.IntegerField(default=4)
+
+    table_number = models.IntegerField(default=1)
+
+    STATUS_CHOICES = [
+        ('FREE', 'Free'),
+        ('OCCUPIED', 'Occupied'),
+        ('RESERVED', 'Reserved'),
+    ]
+    status = models.CharField(
+        max_length=10,
+        choices=STATUS_CHOICES,
+        default='FREE'
+    )
+
+    last_updated = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.restaurant.name} - {self.seats} seats"
+        return f"{self.restaurant.name} - Table {self.table_number} ({self.status})"
+    
+
+@receiver(post_save, sender=Restaurant)
+def create_tables_for_new_restaurant(sender, instance, created, **kwargs):
+    if created:
+        for i in range(1, 11):
+            Table.objects.create(
+                restaurant=instance,
+                table_number=i,
+                status="FREE",
+                seats=4
+            )
 
 
 class Prediction(models.Model):
@@ -34,7 +76,8 @@ class Prediction(models.Model):
     # 🔥 ML features
     queue_length = models.IntegerField()
     occupied_tables = models.IntegerField()
-    total_tables = models.IntegerField()   # ✅ ADD THIS
+    total_tables = models.IntegerField()   
+    confidence = models.FloatField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -68,3 +111,19 @@ class Queue(models.Model):
 
     class Meta:
         ordering = ["joined_at"]
+
+class OccupancyLog(models.Model):
+    restaurant = models.ForeignKey(Restaurant, on_delete=models.CASCADE)
+    occupied_tables = models.IntegerField()
+    total_tables = models.IntegerField()
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.restaurant.name} - {self.occupied_tables}/{self.total_tables}"
+    
+class BillingEvent(models.Model):
+    table = models.ForeignKey(Table, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Billing - {self.table}"
