@@ -1,38 +1,30 @@
-from django.contrib import admin
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from api.views import (
-    RestaurantViewSet, TableViewSet, PredictionViewSet, QueueViewSet,
-    join_queue, leave_queue, predict_wait,
-    recommend_restaurants,
-    staff_dashboard,
-    update_table_status,
-    billing_complete,
-    seat_customer
-)
+from api.views import *
+from django.contrib import admin
 
 router = DefaultRouter()
 router.register(r'restaurants', RestaurantViewSet)
 router.register(r'tables', TableViewSet)
-router.register(r'predictions', PredictionViewSet)
 router.register(r'queue', QueueViewSet)
+router.register(r'predictions', PredictionViewSet)
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('api/', include('api.urls')),
 
-    # ✅ CUSTOM ROUTES FIRST (IMPORTANT)
-    path('api/tables/update/<int:table_id>/', update_table_status),
-    path('api/billing/complete/', billing_complete),
-    path('api/seat/', seat_customer),
-    path('api/staff/dashboard/<int:restaurant_id>/', staff_dashboard),
+    # AUTH
+    path("api/register/", register),
+    path("api/login/", login_view),
+    path("api/logout/", logout_view),
+    path("api/forgot/", forgot_password),
 
-    # other APIs
-    path('api/join_queue/', join_queue),
-    path('api/leave_queue/', leave_queue),
+    # CORE FEATURES
     path("api/predict-wait/<int:restaurant_id>/", predict_wait),
-    path("api/recommend/", recommend_restaurants),
+    path("api/join_queue/", join_queue),
+    path("api/leave_queue/", leave_queue),
+    path("api/simulate_rush/", simulate_rush),
 
-    # ✅ FIXED (SEPARATE ROUTES)
-    path('api/auth/', include('api.urls')),   # auth routes
-    path('api/', include(router.urls)),       # viewsets
+    # STAFF
+    path("api/staff/<int:restaurant_id>/", staff_dashboard),
 ]
