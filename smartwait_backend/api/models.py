@@ -2,7 +2,16 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+from django.utils import timezone
+import random
 
+
+
+class ModelMetrics(models.Model):
+    mae = models.FloatField()
+    rmse = models.FloatField()
+    r2 = models.FloatField()
+    created_at = models.DateTimeField(auto_now_add=True)
 
 class User(AbstractUser):
     role = models.CharField(max_length=20, default="customer")
@@ -13,6 +22,18 @@ class User(AbstractUser):
         blank=True,
         on_delete=models.SET_NULL
     )
+
+class PasswordResetOTP(models.Model):
+    user = models.ForeignKey("User", on_delete=models.CASCADE)
+    otp = models.CharField(max_length=6)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def is_valid(self):
+        # valid for 10 minutes
+        return timezone.now() < self.created_at + timezone.timedelta(minutes=10)
+
+    def __str__(self):
+        return f"{self.user.email} - {self.otp}"
 
 class Restaurant(models.Model):
     name = models.CharField(max_length=100)
@@ -27,6 +48,7 @@ class Restaurant(models.Model):
     lat = models.FloatField(default=51.5074)  # London fallback
     lng = models.FloatField(default=-0.1278)
 
+    menu_url = models.URLField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -56,6 +78,28 @@ class Table(models.Model):
     def __str__(self):
         return f"{self.restaurant.name} - Table {self.table_number} ({self.status})"
     
+class Subscription(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    restaurant = models.ForeignKey(Restaurant, on_delete=models.CASCADE)
+    threshold = models.IntegerField(default=5)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.user.username} → {self.restaurant.name} ({self.threshold} mins)"
+
+
+class Notification(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    restaurant = models.ForeignKey(Restaurant, on_delete=models.CASCADE)
+    message = models.TextField()
+    is_read = models.BooleanField(default=False)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.user.username} - {self.message}"
+    
 
 @receiver(post_save, sender=Restaurant)
 def create_tables_for_new_restaurant(sender, instance, created, **kwargs):
@@ -80,6 +124,7 @@ class Prediction(models.Model):
     confidence = models.FloatField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
+    party_size = models.IntegerField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.restaurant.name} - {self.wait_time} mins"

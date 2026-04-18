@@ -18,12 +18,16 @@ urlpatterns = [
     path("api/login/", login_view),
     path("api/logout/", logout_view),
     path("api/forgot/", forgot_password),
+    path("api/send_otp/", send_otp),
+    path("api/verify_otp/", verify_otp),
 
     # CORE FEATURES
     path("api/predict-wait/<int:restaurant_id>/", predict_wait),
     path("api/join_queue/", join_queue),
     path("api/leave_queue/", leave_queue),
     path("api/simulate_rush/", simulate_rush),
+    path("api/subscribe_alert/", subscribe_alert),
+    path("api/notifications/", get_notifications),
 
     # STAFF
     path("api/staff/<int:restaurant_id>/", staff_dashboard),

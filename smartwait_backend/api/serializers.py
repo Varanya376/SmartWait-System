@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import Restaurant, Table, Prediction, Queue
 from .utils import calculate_wait_time
+from .models import Subscription, Notification
 
 class RestaurantSerializer(serializers.ModelSerializer):
     wait_time = serializers.SerializerMethodField()
@@ -37,6 +38,17 @@ class QueueSerializer(serializers.ModelSerializer):
     class Meta:
         model = Queue
         fields = '__all__'
+
+class SubscriptionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Subscription
+        fields = "__all__"
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notification
+        fields = "__all__"
 
 class StaffDashboardSerializer(serializers.Serializer):
     restaurant = serializers.CharField()

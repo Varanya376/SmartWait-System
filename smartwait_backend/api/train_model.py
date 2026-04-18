@@ -5,6 +5,13 @@ import numpy as np
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from api.models import Prediction
+from sklearn.metrics import mean_absolute_error, mean_squared_error
+import logging
+logger = logging.getLogger(__name__)
+from .models import ModelMetrics
+
+
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "model.pkl")
 
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "model.pkl")
 
@@ -14,15 +21,27 @@ def train():
     df = pd.DataFrame(data)
 
     if len(df) < 10:
-        print("❌ Not enough data")
+        logger.warning("Not enough data")
         return
 
-    print(f"📊 Training on {len(df)} records")
+    logger.info(f"Training on {len(df)} records")
 
     # -------------------------------
-    # 🧹 CLEAN DATA (CRITICAL FIX)
+    # 🧹 CLEAN DATA
     # -------------------------------
-    df = df[["occupied_tables", "queue_length", "total_tables", "wait_time"]]
+    df = df[[
+        "occupied_tables",
+        "queue_length",
+        "total_tables",
+        "wait_time",
+        "created_at"
+    ]].copy()
+
+    # 🧠 TIME FEATURES
+    df["hour"] = pd.to_datetime(df["created_at"]).dt.hour
+    df["day_of_week"] = pd.to_datetime(df["created_at"]).dt.dayofweek
+
+    df.drop(columns=["created_at"], inplace=True)
 
     # remove bad values
     df.replace([np.inf, -np.inf], np.nan, inplace=True)
@@ -32,12 +51,12 @@ def train():
     df = df[
         (df["total_tables"] > 0) &
         (df["occupied_tables"] >= 0) &
-        (df["wait_time"] > 0) &
+        (df["wait_time"] >= 0) &
         (df["wait_time"] < 180)
     ]
 
     if len(df) < 10:
-        print("❌ Data too dirty after cleaning")
+        logger.warning("Data too dirty after cleaning")
         return
 
     # -------------------------------
@@ -47,24 +66,24 @@ def train():
     df["queue_pressure"] = df["queue_length"] / (df["total_tables"] + 1)
 
     X = df[[
-    "occupied_tables",
-    "queue_length",
-    "total_tables",
-    "occupancy_rate",
-    "queue_pressure"
-]]
+        "occupied_tables",
+        "queue_length",
+        "total_tables",
+        "occupancy_rate",
+        "queue_pressure",
+        "hour",
+        "day_of_week"
+    ]]
+
     y = df["wait_time"]
 
     # -------------------------------
-    # 🧠 TRAIN / TEST SPLIT
+    # 🧠 TRAIN
     # -------------------------------
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42
     )
 
-    # -------------------------------
-    # 🌳 MODEL
-    # -------------------------------
     model = RandomForestRegressor(
         n_estimators=150,
         max_depth=10,
@@ -73,15 +92,26 @@ def train():
 
     model.fit(X_train, y_train)
 
-    # -------------------------------
-    # 📈 EVALUATION
-    # -------------------------------
-    score = model.score(X_test, y_test)
-    print(f"📈 Model R² Score: {round(score, 3)}")
+    y_pred = model.predict(X_test)
 
-    # -------------------------------
-    # 💾 SAVE MODEL
-    # -------------------------------
+    r2 = model.score(X_test, y_test)
+    mae = mean_absolute_error(y_test, y_pred)
+    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+
+    logger.info(f"R2 Score: {round(r2, 3)}")
+    logger.info(f"MAE: {round(mae, 2)} minutes")
+    logger.info(f"RMSE: {round(rmse, 2)} minutes")
+
+    # SAVE METRICS TO DATABASE
+    try:
+        ModelMetrics.objects.create(
+            mae=mae,
+            rmse=rmse,
+            r2=r2
+        )
+    except Exception as e:
+        logger.error(f"Error saving model metrics: {e}")
+
     joblib.dump(model, MODEL_PATH)
 
-    print("✅ Model trained & saved successfully")
+    logger.info("Model trained & saved successfully")

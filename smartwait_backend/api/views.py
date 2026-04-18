@@ -9,6 +9,7 @@ from .serializers import (
     QueueSerializer
 )
 import random
+from .train_model import train
 from .utils import calculate_wait_time
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
@@ -17,14 +18,19 @@ from rest_framework.views import APIView
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import make_password
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.authentication import SessionAuthentication
+from rest_framework.decorators import authentication_classes
 from django.contrib.auth import authenticate, login
 from django.contrib.auth import logout
 from rest_framework.decorators import permission_classes
 from rest_framework.permissions import AllowAny
-from rest_framework.decorators import permission_classes
-from django.views.decorators.csrf import csrf_exempt
-from rest_framework.authentication import SessionAuthentication, BasicAuthentication
-from rest_framework.decorators import authentication_classes
+from .permissions import IsStaffUser, IsCustomerUser
+import logging
+logger = logging.getLogger(__name__)
+from .models import Subscription, Notification
+from .serializers import NotificationSerializer
+from django.core.mail import send_mail
+from .models import PasswordResetOTP
 
 
 # ---------------- VIEWSETS ---------------- #
@@ -48,14 +54,51 @@ class QueueViewSet(viewsets.ModelViewSet):
     queryset = Queue.objects.all()
     serializer_class = QueueSerializer
 
-class StaffDashboardView(APIView):
-    permission_classes = [IsAuthenticated]
-
 class CsrfExemptSessionAuthentication(SessionAuthentication):
     def enforce_csrf(self, request):
-        return  
+        return
 
 # ---------------- HELPER FUNCTIONS ---------------- #
+
+def check_and_send_notifications(restaurant, wait_time):
+    subscriptions = Subscription.objects.filter(restaurant=restaurant)
+
+    for sub in subscriptions:
+
+        # ✅ WAIT TIME ALERT (prevent spam)
+        already_sent_wait = Notification.objects.filter(
+            user=sub.user,
+            restaurant=restaurant,
+            message__icontains="wait time"
+        ).exists()
+
+        if wait_time <= sub.threshold and not already_sent_wait:
+            Notification.objects.create(
+                user=sub.user,
+                restaurant=restaurant,
+                message=f"⏰ {restaurant.name} wait time is now {wait_time} mins!"
+            )
+
+        # ✅ TABLE READY ALERT (prevent spam)
+        user_queue = Queue.objects.filter(
+            restaurant=restaurant,
+            name=sub.user.username,
+            status__in=["waiting", "seated"]
+        ).first()
+
+        if user_queue:
+            already_sent_table = Notification.objects.filter(
+                user=sub.user,
+                restaurant=restaurant,
+                message__icontains="table"
+            ).exists()
+
+            if (user_queue.status == "seated" or user_queue.position == 1) and not already_sent_table:
+                Notification.objects.create(
+                    user=sub.user,
+                    restaurant=restaurant,
+                    message=f"🎉 Your table at {restaurant.name} is ready!"
+                )
 
 def sync_restaurant_tables(restaurant):
     occupied = Table.objects.filter(
@@ -107,12 +150,14 @@ def send_realtime_update(restaurant, event, wait_time):
     )
 
 def get_safe_wait_time(restaurant):
+    result = calculate_wait_time(restaurant)
+
+    wait_time = result["wait_time"]   # ✅ extract number
+
     queue_count = Queue.objects.filter(
         restaurant=restaurant,
         status="waiting"
     ).count()
-
-    wait_time = calculate_wait_time(restaurant)
 
     if queue_count > 0:
         return max(5, round(wait_time))
@@ -143,28 +188,94 @@ def process_queue(restaurant):
     # update remaining queue positions
     update_queue_positions(restaurant)
 
+def maybe_retrain_model():
+    try:
+        count = Prediction.objects.count()
+
+        # trigger every 20 new records
+        if count >= 20 and count % 20 == 0:
+            logger.info(f"Auto-training triggered at {count} records")
+            train()
+    except Exception as e:
+        logger.error(f"Retraining error: {e}")
+
 # ---------------- API FUNCTIONS ---------------- #
 
 User = get_user_model()
 
 @api_view(['POST'])
+@permission_classes([AllowAny])
 def register(request):
-    data = request.data
+    email = request.data.get("email")
+    password = request.data.get("password")
+    name = request.data.get("name")   # ✅ ADD HERE
+    role = request.data.get("role", "customer")
 
-    if User.objects.filter(email=data["email"]).exists():
-        return Response(
-            {"error": "User already exists"},
-            status=400
-        )
+    if not email or not password:
+        return Response({"error": "Missing fields"}, status=400)
 
-    user = User.objects.create(
-        username=data["email"],
-        email=data["email"],
-        password=make_password(data["password"]),
-        role=data.get("role", "customer")
+    if User.objects.filter(email=email).exists():
+        return Response({"error": "User already exists"}, status=400)
+
+    # ✅ Create user properly
+    user = User.objects.create_user(
+        username=email,
+        email=email,
+        password=password
     )
 
+    # ✅ ADD THESE LINES RIGHT AFTER CREATION
+    user.first_name = name
+    user.role = role
+    user.save()
+
     return Response({"message": "User created"})
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def send_otp(request):
+    email = request.data.get("email")
+
+    user = User.objects.filter(email=email).first()
+    if not user:
+        return Response({"error": "User not found"}, status=404)
+
+    otp = str(random.randint(100000, 999999))
+
+    PasswordResetOTP.objects.create(user=user, otp=otp)
+
+    send_mail(
+        "SmartWait Password Reset OTP",
+        f"Your OTP is: {otp}",
+        "noreply@smartwait.com",
+        [email],
+        fail_silently=True,
+    )
+
+    return Response({"message": "OTP sent"})
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def verify_otp(request):
+    email = request.data.get("email")
+    otp = request.data.get("otp")
+    new_password = request.data.get("password")
+
+    user = User.objects.filter(email=email).first()
+    if not user:
+        return Response({"error": "User not found"}, status=404)
+
+    record = PasswordResetOTP.objects.filter(user=user, otp=otp).last()
+
+    if not record or not record.is_valid():
+        return Response({"error": "Invalid or expired OTP"}, status=400)
+
+    user.set_password(new_password)
+    user.save()
+
+    record.delete()  # cleanup
+
+    return Response({"message": "Password reset successful"})
 
 @api_view(['POST'])
 @authentication_classes([CsrfExemptSessionAuthentication])
@@ -173,26 +284,38 @@ def login_view(request):
     email = request.data.get("email")
     password = request.data.get("password")
 
-    user = authenticate(request, username=email, password=password)
+    if not email or not password:
+        return Response({"error": "Missing credentials"}, status=400)
 
-    if user is not None:
-        login(request, user)
+    user = User.objects.filter(email=email).first()
+
+    if not user:
+        return Response({"error": "Invalid credentials"}, status=400)
+
+    # 🔥 AUTHENTICATE USING USERNAME
+    authenticated_user = authenticate(
+        request,
+        username=user.username,
+        password=password
+    )
+
+    if authenticated_user is not None:
+        login(request, authenticated_user)
 
         return Response({
             "message": "Logged in",
-            "role": user.role,
-            "restaurant_id": user.restaurant.id if user.restaurant else None
+            "role": authenticated_user.role,
+            "restaurant_id": authenticated_user.restaurant.id if authenticated_user.restaurant else None
         })
 
     return Response({"error": "Invalid credentials"}, status=400)
 
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def logout_view(request):
     logout(request)
     return Response({"message": "Logged out"})
 
-from asgiref.sync import async_to_sync
-from channels.layers import get_channel_layer
 
 @api_view(['POST'])
 def forgot_password(request):
@@ -207,8 +330,16 @@ def forgot_password(request):
     return Response({"message": "Password reset (simulated)"})
 
 @api_view(['POST'])
+@authentication_classes([CsrfExemptSessionAuthentication])
+@permission_classes([IsAuthenticated])
 def simulate_rush(request):
     restaurant_id = request.data.get("restaurant")
+
+    if not restaurant_id:
+        return Response({"error": "Restaurant required"}, status=400)
+    
+    if request.user.role not in ["staff", "customer"]:
+        return Response({"error": "Unauthorized role"}, status=403)
 
     restaurant = get_object_or_404(Restaurant, id=restaurant_id)
 
@@ -218,11 +349,12 @@ def simulate_rush(request):
             name=f"Rush {i}",
             party_size=random.randint(1, 5),
             status="waiting"
-)
+    )
 
     update_queue_positions(restaurant)
 
     wait_time = get_safe_wait_time(restaurant)
+    check_and_send_notifications(restaurant, wait_time)
 
     send_realtime_update(restaurant, "update", wait_time)
 
@@ -230,7 +362,7 @@ def simulate_rush(request):
 
 @api_view(['POST'])
 @authentication_classes([CsrfExemptSessionAuthentication])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated, IsCustomerUser])
 def join_queue(request):
     restaurant_id = request.data.get("restaurant")
     name = request.data.get("name")
@@ -259,14 +391,16 @@ def join_queue(request):
     update_queue_positions(restaurant)
 
     wait_time = get_safe_wait_time(restaurant)
+    check_and_send_notifications(restaurant, wait_time)
 
     Prediction.objects.create(
         restaurant=restaurant,
         wait_time=wait_time,
         queue_length=queue_length + 1,
         occupied_tables=restaurant.occupied_tables,
-        total_tables=restaurant.total_tables
+        total_tables=restaurant.total_tables,
     )
+    maybe_retrain_model()
 
     send_realtime_update(restaurant, "update", wait_time)
 
@@ -278,7 +412,7 @@ def join_queue(request):
 
 @api_view(['POST'])
 @authentication_classes([CsrfExemptSessionAuthentication])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated, IsCustomerUser])
 def leave_queue(request):
     restaurant_id = request.data.get("restaurant")
     name = request.data.get("name")
@@ -311,6 +445,8 @@ def leave_queue(request):
     process_queue(restaurant)
 
     wait_time = get_safe_wait_time(restaurant)
+    check_and_send_notifications(restaurant, wait_time)
+    maybe_retrain_model()
 
     send_realtime_update(restaurant, "update", wait_time)
 
@@ -323,7 +459,11 @@ def predict_wait(request, restaurant_id):
     update_queue_positions(restaurant)
     sync_restaurant_tables(restaurant)
 
-    wait_time = calculate_wait_time(restaurant)
+    result = calculate_wait_time(restaurant)
+
+    wait_time = result["wait_time"]
+    used_ml = result["used_ml"]
+    factors = result["factors"]
 
     queue_length = Queue.objects.filter(
         restaurant=restaurant,
@@ -341,7 +481,8 @@ def predict_wait(request, restaurant_id):
         status="waiting"
     ).count()
 
-    confidence = random.randint(80, 95)
+    load_factor = factors["queue_length"] / max(1, factors["total_tables"])
+    confidence = int(max(60, min(95, 95 - (load_factor * 20))))
 
     Prediction.objects.create(
         restaurant=restaurant,
@@ -352,10 +493,31 @@ def predict_wait(request, restaurant_id):
         confidence=confidence
     )
 
+    # AUTO RETRAIN EVERY 20 RECORDS
+    maybe_retrain_model()
+
+    # EXPLANATION ENGINE
+    explanation = []
+
+    if factors["queue_length"] > 10:
+        explanation.append("High queue volume")
+
+    if factors["occupied_tables"] / max(1, factors["total_tables"]) > 0.8:
+        explanation.append("Restaurant nearly full")
+
+    if factors["queue_length"] > factors["total_tables"]:
+        explanation.append("Queue exceeds capacity")
+
+    if not explanation:
+        explanation.append("Low demand")
+
     return Response({
         "wait_time": wait_time,
         "confidence": confidence,
-        "position": queue_length
+        "position": queue_length,
+        "ml_used": used_ml,
+        "factors": factors,
+        "explanation": explanation
 })
 
 @api_view(['GET'])
@@ -365,7 +527,8 @@ def recommend_restaurants(request):
     results = []
 
     for r in restaurants:
-        wait = calculate_wait_time(r)
+        result = calculate_wait_time(r)
+        wait = result["wait_time"]
 
         score = (-wait - r.occupied_tables * 2)
 
@@ -389,12 +552,6 @@ def staff_dashboard(request, restaurant_id):
 
     if not request.user.is_authenticated:
         return Response({"error": "Not logged in"}, status=401)
-
-    print("USER:", request.user)
-    print("ROLE:", request.user.role)
-    print("USER RESTAURANT:", request.user.restaurant)
-    print("USER RESTAURANT ID:", getattr(request.user.restaurant, "id", None))
-    print("URL ID:", restaurant_id)
 
     # 🔐 ROLE CHECK
     if request.user.role != "staff":
@@ -430,7 +587,8 @@ def staff_dashboard(request, restaurant_id):
     status="waiting"
 ).count()
 
-    wait_time = calculate_wait_time(restaurant)
+    result = calculate_wait_time(restaurant)
+    wait_time = result["wait_time"] 
 
     if queue_count > 0:
         wait_time = max(5, round(wait_time))
@@ -446,11 +604,38 @@ def staff_dashboard(request, restaurant_id):
         "wait_time": wait_time
     })
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([CsrfExemptSessionAuthentication])
+def subscribe_alert(request):
+    restaurant_id = request.data.get("restaurant")
+    threshold = request.data.get("threshold", 5)
+    if threshold < 1:
+        threshold = 5
+
+    restaurant = get_object_or_404(Restaurant, id=restaurant_id)
+
+    Subscription.objects.update_or_create(
+        user=request.user,
+        restaurant=restaurant,
+        defaults={"threshold": threshold}
+    )
+
+    return Response({"message": "Subscribed for alerts"})
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([CsrfExemptSessionAuthentication])
+def get_notifications(request):
+    notifications = Notification.objects.filter(user=request.user).order_by("-created_at")
+
+    return Response(NotificationSerializer(notifications, many=True).data)
+
 # ---------------- TABLE UPDATE ---------------- #
 
 @api_view(['PATCH'])
-@authentication_classes([CsrfExemptSessionAuthentication, BasicAuthentication])
-@permission_classes([AllowAny])
+@authentication_classes([CsrfExemptSessionAuthentication])
+@permission_classes([IsAuthenticated, IsStaffUser])
 def update_table_status(request, table_id):
     table = get_object_or_404(Table, id=table_id)
 
@@ -466,6 +651,7 @@ def update_table_status(request, table_id):
     sync_restaurant_tables(restaurant)
 
     wait_time = get_safe_wait_time(restaurant)
+    check_and_send_notifications(restaurant, wait_time)
 
     Prediction.objects.create(
         restaurant=restaurant,
@@ -477,6 +663,7 @@ def update_table_status(request, table_id):
         occupied_tables=restaurant.occupied_tables,
         total_tables=restaurant.total_tables
     )
+    maybe_retrain_model()
 
     send_realtime_update(restaurant, "update", wait_time)
 
@@ -491,7 +678,7 @@ def update_table_status(request, table_id):
 
 @api_view(['POST'])
 @authentication_classes([CsrfExemptSessionAuthentication])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated, IsStaffUser])
 def billing_complete(request):
     table_id = request.data.get("table_id")
 
@@ -506,6 +693,7 @@ def billing_complete(request):
     process_queue(restaurant)
 
     wait_time = get_safe_wait_time(restaurant)
+    check_and_send_notifications(restaurant, wait_time)
 
     Prediction.objects.create(
         restaurant=restaurant,
@@ -517,6 +705,7 @@ def billing_complete(request):
         occupied_tables=restaurant.occupied_tables,
         total_tables=restaurant.total_tables
     )
+    maybe_retrain_model()
 
     send_realtime_update(restaurant, "update", wait_time)
 
@@ -526,7 +715,7 @@ def billing_complete(request):
 
 @api_view(['POST'])
 @authentication_classes([CsrfExemptSessionAuthentication])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated, IsStaffUser])
 def seat_customer(request):
     queue_id = request.data.get("queue_id")
 
@@ -553,6 +742,7 @@ def seat_customer(request):
     sync_restaurant_tables(restaurant)
 
     wait_time = get_safe_wait_time(restaurant)
+    check_and_send_notifications(restaurant, wait_time)
 
     Prediction.objects.create(
         restaurant=restaurant,
@@ -564,14 +754,15 @@ def seat_customer(request):
         occupied_tables=restaurant.occupied_tables,
         total_tables=restaurant.total_tables
     )
-    next_customer = Queue.objects.filter(
-        restaurant=restaurant,
-        status="waiting",
-        position=1
-    ).first()
+    maybe_retrain_model()
 
+    next_customer = Queue.objects.filter(
+    restaurant=restaurant,
+    status="waiting",
+    position=1
+).first()
     if next_customer:
-         print("🔔 Customer ready!")
+        logger.info("Next customer ready")
 
     send_realtime_update(restaurant, "update", wait_time)
 

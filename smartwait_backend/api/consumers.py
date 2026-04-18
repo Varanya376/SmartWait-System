@@ -20,7 +20,9 @@ class QueueConsumer(AsyncWebsocketConsumer):
 
     async def send_update(self, event):
         await self.send(text_data=json.dumps({
-         "message": event["message"],
+            "message": event["message"],
             "wait_time": event["wait_time"],
-            "restaurant_id": event["restaurant_id"]
+            "restaurant_id": event["restaurant_id"],
+            "queue": event.get("queue", []),   # ✅ ADD THIS
+            "tables": event.get("tables", [])  # (optional but good)
     }))
