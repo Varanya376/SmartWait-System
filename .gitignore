@@ -19,3 +19,18 @@ venv/
 # Build
 build/
 dist/
+
+# Python virtual env (double safety)
+*/venv/
+
+# Django stuff
+*.log
+staticfiles/
+
+# OS / editor
+.vscode/
+.idea/
+
+# Environment variables
+.env.local
+.env.*.local
