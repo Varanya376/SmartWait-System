@@ -33,7 +33,7 @@ function Login() {
 
       {/* HEADER */}
       <div className="login-header">
-        <h1 className="app-title">SmartWait</h1>
+        <h1 className="app-title">Synq</h1>
         <p className="tagline">USER LOGIN</p>
       </div>
 

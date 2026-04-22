@@ -50,7 +50,7 @@ Git
 Installation & Setup Guide (Windows): Follow these steps exactly in order.
 
 STEP 1: Clone the Repository
-git clone https://github.com/your-username/SmartWait-System.git
+git clone https://github.com/Varanya376/SmartWait-System.git
 cd SmartWait-System
 
 STEP 2: Backend Setup (Django)
@@ -147,3 +147,10 @@ Machine learning models
 Real-time data handling
 
 The system is designed for local execution and showcases a scalable architecture for intelligent queue management.
+
+notes:
+add npm install to start frontend first step
+
+pip install daphne
+pip install channels
+python manage.py migrate

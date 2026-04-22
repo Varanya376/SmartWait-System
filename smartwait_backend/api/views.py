@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 from .models import Subscription, Notification
 from .serializers import NotificationSerializer
 from django.core.mail import send_mail
+from django.conf import settings
 from .models import PasswordResetOTP
 
 
@@ -247,9 +248,9 @@ def send_otp(request):
     send_mail(
         "SmartWait Password Reset OTP",
         f"Your OTP is: {otp}",
-        "noreply@smartwait.com",
+        settings.EMAIL_HOST_USER,
         [email],
-        fail_silently=True,
+        fail_silently=False,
     )
 
     return Response({"message": "OTP sent"})
