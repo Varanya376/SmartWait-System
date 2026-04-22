@@ -73,7 +73,7 @@ const handleSubmit = async (e) => {
 
       {/* HEADER */}
       <div className="login-header">
-        <h1 className="app-title">SmartWait</h1>
+        <h1 className="app-title">Synq</h1>
         <p className="tagline">USER REGISTRATION</p>
       </div>
 
@@ -82,7 +82,7 @@ const handleSubmit = async (e) => {
 
         <h2>Create Your Account</h2>
         <p className="login-subtext">
-          Register to start using SmartWait
+          Register to start using Sync
         </p>
 
         <div className="card-divider" />

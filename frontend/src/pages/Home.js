@@ -198,17 +198,23 @@ function Home({ saved = [], toggleSave = () => {}, profile = {} }) {
           data.map(async (r) => {
             try {
               const waitData = await fetchWaitTime(r.id);
-  
+        
               return {
                 ...r,
                 wait_time: waitData.wait_time,
                 confidence: waitData.confidence,
+        
+                // ✅ ADD THESE
+                factors: waitData.factors,
+                mlUsed: waitData.ml_used,
+        
                 distance: getDistance(
                   userLocation.lat,
                   userLocation.lng,
                   r.lat,
                   r.lng
                 ),
+        
                 rating: Number((Math.random() * 2 + 3).toFixed(1)),
                 crowd: Math.floor(Math.random() * 5) + 1,
               };
@@ -237,20 +243,20 @@ function Home({ saved = [], toggleSave = () => {}, profile = {} }) {
   const calculateScore = (r) => {
     let score = 100;
   
-    //Stronger weight on wait time (MOST IMPORTANT)
-    score -= (r.wait_time ?? 20) * 2;
+    // Wait time (important)
+    score -= (r.wait_time ?? 20) * 1.5;
   
-    //Distance matters
-    score -= (r.distance ?? 5) * 10;
+    // Distance (reduced impact)
+    score -= (r.distance ?? 5) * 4;
   
-    // ⭐ Rating boost
-    score += (r.rating ?? 3) * 8;
+    // Rating boost
+    score += (r.rating ?? 3) * 10;
   
-    //Crowd penalty
-    score -= (r.crowd ?? 3) * 6;
+    // Crowd penalty
+    score -= (r.crowd ?? 3) * 4;
   
-    //Bonus for very low wait
-    if ((r.wait_time ?? 20) <= 5) score += 15;
+    // Bonus for low wait
+    if ((r.wait_time ?? 20) <= 5) score += 10;
   
     return Math.max(0, Math.min(100, Math.round(score)));
   };
@@ -277,7 +283,9 @@ const refreshQueue = async (restaurantListParam) => {
     const data = await fetchQueue();
 
     const queueFiltered = data.filter(
-      q => q.status === "waiting" || q.status === "seated"
+      q =>
+        (q.status === "waiting" || q.status === "seated") &&
+        q.name === currentUserName
     );
 
     const formatted = queueFiltered.map((q) => {
@@ -321,7 +329,12 @@ const refreshQueue = async (restaurantListParam) => {
       }
     });
 
-    setQueueInfo(foundUser ? userQueues : {});
+    if (foundUser) {
+      setQueueInfo(userQueues);
+    } else {
+      setQueueInfo({});   
+      setNotified(false); 
+    }
 
   } catch (err) {
     console.error("❌ Queue refresh error:", err);
@@ -483,35 +496,7 @@ const ranked = [...filtered]
   </div>
 )}
 
-{/* Notification Bell */}
-<div className="notification-wrapper">
-  <div 
-    className="bell"
-    onClick={() => setShowNotifications(!showNotifications)}
-  >
-    🔔
-    {notifications.length > 0 && (
-      <span className="badge">{notifications.length}</span>
-    )}
-  </div>
-
-  {showNotifications && (
-  <div className="notification-dropdown">
-    {notifications.length > 0 ? (
-      notifications.map((n) => (
-        <div key={n.id} className="notification-item">
-          {n.message}
-        </div>
-      ))
-    ) : (
-      <div className="notification-item">No notifications yet</div>
-    )}
-  </div>
-)}
-</div>
-
-
-      <Navbar sortRestaurants={sortRestaurants} setFilter={setFilter} />
+      <Navbar sortRestaurants={sortRestaurants} setFilter={setFilter} notifications={notifications} />
 
       <div className="hero">
   <div className="hero-row">
@@ -566,7 +551,10 @@ const ranked = [...filtered]
             <RestaurantCard
             key={r.id}
             restaurant={r}
+            score={calculateScore(r)}
             userLocation={userLocation}
+            factors={r.factors}
+            mlUsed={r.mlUsed}
             saved={saved}
             toggleSave={toggleSave}
             tag={tag}
@@ -590,6 +578,9 @@ const ranked = [...filtered]
                 key={r.id}
                 restaurant={r}
                 userLocation={userLocation}
+                score={calculateScore(r)}
+                factors={r.factors}
+                mlUsed={r.mlUsed}
                 saved={saved}
                 toggleSave={toggleSave}
                 joinQueue={joinQueue}

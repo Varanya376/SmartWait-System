@@ -100,7 +100,7 @@ socket.onerror = (err) => {
   const handleChange = async (tableId, value) => {
     try {
       const res = await fetch(
-        `http://localhost:8000/api/tables/${tableId}/`,
+        `http://localhost:8000/api/update_table_status/${tableId}/`,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -179,7 +179,7 @@ socket.onerror = (err) => {
       </button>
 
       <div className="login-header">
-        <h1 className="app-title">SmartWait</h1>
+        <h1 className="app-title">Synq</h1>
         <p className="tagline">STAFF DASHBOARD</p>
       </div>
 

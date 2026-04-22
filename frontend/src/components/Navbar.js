@@ -2,35 +2,42 @@ import { useState } from "react";
 import logo from "../assets/synq-logo.png";
 import FilterMenu from "./FilterMenu";
 
-function Navbar({ sortRestaurants, setFilter }) {
+function Navbar({ sortRestaurants, setFilter, notifications = [] }) {
   const [open, setOpen] = useState(false);
 
   return (
     <header className="navbar">
   
-      {/* LEFT → LOGO */}
-      <div className="navbar-left">
-        <img src={logo} alt="Synq Logo" className="nav-logo" />
-      </div>
-  
-      {/* RIGHT → MENU */}
-      <div className="kebab-wrapper">
-        <button
-          className="kebab-btn"
-          onClick={() => setOpen(!open)}
-        >
-          ⋮
-        </button>
+      {/* RIGHT → ACTIONS */}
+      <div className="nav-actions">
 
-        {open && (
-          <div className="menu-container">
-            <FilterMenu
-              sortRestaurants={sortRestaurants}
-              setFilter={setFilter}
-              closeMenu={() => setOpen(false)}
-            />
-          </div>
-        )}
+        {/* 🔔 Notification Bell */}
+        <div className="bell">
+          🔔
+          {notifications.length > 0 && (
+            <span className="badge">{notifications.length}</span>
+          )}
+        </div>
+
+        {/* ⋮ MENU */}
+        <div className="kebab-wrapper">
+          <button
+            className="kebab-btn"
+            onClick={() => setOpen(!open)}
+          >
+            ⋮
+          </button>
+
+          {open && (
+            <div className="menu-container">
+              <FilterMenu
+                sortRestaurants={sortRestaurants}
+                setFilter={setFilter}
+                closeMenu={() => setOpen(false)}
+              />
+            </div>
+          )}
+        </div>
 
       </div>
 

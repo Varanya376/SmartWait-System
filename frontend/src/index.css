@@ -18,7 +18,7 @@ html,body{
   max-width:1100px;
   margin:0 auto;
   padding:3rem 2rem;
-  padding-top: 100px;
+  padding-top: 140px;
 }
 
 /* ================= HEADER ================= */
@@ -47,16 +47,17 @@ html,body{
 /* ================= NAVBAR ================= */
 
 .navbar {
+  height: 60px;
   position: fixed;
   top: 0;
   left: 0;
   width: 100%;
 
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end; /* push items to right */
   align-items: center;
 
-  padding: 12px 30px;
+  padding: 0 30px;
 
   background: rgba(20,20,20,0.6);
   backdrop-filter: blur(8px);
@@ -64,19 +65,29 @@ html,body{
   z-index: 1000;
 }
 
-.kebab-wrapper{
-  position:absolute;
-  top:10px;
-  right:10px;
-  z-index:1000; 
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
 }
 
-.kebab-btn{
-  background:none;
-  border:none;
-  font-size:1.6rem;
-  color:#d4af37;
-  cursor:pointer;
+.kebab-wrapper {
+  position: relative;
+}
+
+.kebab-btn {
+  background: none;
+  border: none;
+  font-size: 1.6rem;
+  color: #d4af37;
+  cursor: pointer;
+}
+
+/* bell styling */
+.bell {
+  font-size: 1.4rem;
+  cursor: pointer;
+  position: relative;
 }
 
 /* ================= LOGO ================= */
@@ -90,7 +101,7 @@ html,body{
 
 /* PERFECT logo size for inline use */
 .hero-logo {
-  width: 50px;
+  width: 100px;
   height: auto;
   margin-top: 6px; /* aligns with text baseline */
 }
@@ -959,7 +970,7 @@ html,body{
 
 .queue-banner {
   position: fixed;
-  top: 0;
+  top: 60px;
   left: 0;
   width: 100%;
   z-index: 1000;

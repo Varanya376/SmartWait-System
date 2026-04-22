@@ -1,6 +1,5 @@
 import { useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { fetchWaitTime } from "../services/api";
 
 
 // SCORE FUNCTION
@@ -60,6 +59,9 @@ function getDistance(lat1, lon1, lat2, lon2) {
 function RestaurantCard({
   restaurant,
   userLocation,
+  factors,
+  mlUsed,
+  score,
   saved,
   toggleSave,
   tag,
@@ -69,9 +71,6 @@ function RestaurantCard({
   simulateRush
 }) {
   const navigate = useNavigate();
-
-  const [wait, setWait] = useState(null);
-  const [confidence, setConfidence] = useState(null);
   const [explanation, setExplanation] = useState([]);
 
   const isSaved = saved?.includes(restaurant.id);
@@ -79,9 +78,6 @@ function RestaurantCard({
   const handleClick = () => {
     navigate(`/restaurant/${restaurant.id}`);
   };
-
-  const [mlUsed, setMlUsed] = useState(false);
-  const [factors, setFactors] = useState(null);
 
   const lat = parseFloat(restaurant.lat);
   const lng = parseFloat(restaurant.lng);
@@ -91,31 +87,6 @@ function RestaurantCard({
       ? getDistance(userLocation.lat, userLocation.lng, lat, lng)
       : null;
 
-    const score = calculateScore(restaurant, wait, factors, mlUsed, realDistance);
-
-
-  // OPTIMIZED WAIT FETCH (no API spam)
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const data = await fetchWaitTime(restaurant.id);
-        setWait(data.wait_time);
-        setConfidence(data.confidence);
-        setMlUsed(data.ml_used);
-        setFactors(data.factors);
-        setExplanation(data.explanation || []);
-      } catch {
-        setWait(20);
-        setConfidence(70);
-      }
-    };
-
-    fetchData(); // initial call
-
-    const interval = setInterval(fetchData, 30000); // every 30 sec 
-
-    return () => clearInterval(interval);
-  }, [restaurant.id]);
 
   return (
     <div className="restaurant-card" onClick={handleClick}>
@@ -140,12 +111,16 @@ function RestaurantCard({
 
       {/* WAIT TIME */}
       <div className="wait-badge">
-        ⏱ {wait !== null ? `${Math.max(1, wait)} MIN WAIT` : "Loading..."}
+      ⏱ {restaurant.wait_time !== undefined
+      ? `${Math.max(1, restaurant.wait_time)} MIN WAIT`
+      : "Loading..."}
       </div>
 
       {/* CONFIDENCE */}
       <p className="confidence">
-        🤖 {confidence !== null ? `${confidence}% confidence` : "Calculating..."}
+      🤖 {restaurant.confidence !== undefined
+      ? `${restaurant.confidence}% confidence`
+      : "Calculating..."}
       </p>
 
       {/* AI SECTION */}

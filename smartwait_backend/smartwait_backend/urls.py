@@ -6,7 +6,7 @@ from django.contrib import admin
 router = DefaultRouter()
 router.register(r'restaurants', RestaurantViewSet)
 router.register(r'tables', TableViewSet)
-router.register(r'queue', QueueViewSet)
+router.register(r'queue', QueueViewSet, basename='queue')
 router.register(r'predictions', PredictionViewSet)
 
 urlpatterns = [

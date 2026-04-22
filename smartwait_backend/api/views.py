@@ -52,8 +52,10 @@ class PredictionViewSet(viewsets.ModelViewSet):
 
 
 class QueueViewSet(viewsets.ModelViewSet):
-    queryset = Queue.objects.all()
     serializer_class = QueueSerializer
+
+    def get_queryset(self):
+        return Queue.objects.filter(status__in=["waiting", "seated"])
 
 class CsrfExemptSessionAuthentication(SessionAuthentication):
     def enforce_csrf(self, request):
@@ -193,8 +195,8 @@ def maybe_retrain_model():
     try:
         count = Prediction.objects.count()
 
-        # trigger every 20 new records
-        if count >= 20 and count % 20 == 0:
+        # trigger every 10 new records
+        if count >= 10 and count % 20 == 0:
             logger.info(f"Auto-training triggered at {count} records")
             train()
     except Exception as e:
@@ -352,6 +354,17 @@ def simulate_rush(request):
             status="waiting"
     )
 
+    Prediction.objects.create(
+        restaurant=restaurant,
+        wait_time=get_safe_wait_time(restaurant),
+        queue_length=Queue.objects.filter(
+            restaurant=restaurant,
+            status="waiting"
+        ).count(),
+        occupied_tables=restaurant.occupied_tables,
+        total_tables=restaurant.total_tables,
+    )
+
     update_queue_positions(restaurant)
 
     wait_time = get_safe_wait_time(restaurant)
@@ -422,13 +435,14 @@ def leave_queue(request):
 
     entry = Queue.objects.filter(
         restaurant=restaurant,
-        name=name
+        name=name,
+        status__in=["waiting", "seated"]  # ✅ ONLY active entries
     ).first()
 
     if not entry:
         return Response({"error": "User not found"}, status=404)
 
-    # if seated → free table
+    # free table if seated
     if entry.status == "seated":
         table = Table.objects.filter(
             restaurant=restaurant,
@@ -439,10 +453,8 @@ def leave_queue(request):
             table.status = "FREE"
             table.save()
 
-    entry.status = "left"
-    entry.save()
+    entry.delete()
 
-  
     process_queue(restaurant)
 
     wait_time = get_safe_wait_time(restaurant)

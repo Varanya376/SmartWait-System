@@ -5,7 +5,7 @@ from . import views
 router = DefaultRouter()
 router.register(r"restaurants", views.RestaurantViewSet)
 router.register(r"tables", views.TableViewSet)
-router.register(r"queue", views.QueueViewSet)
+router.register(r'queue', views.QueueViewSet, basename='queue')
 
 urlpatterns = [
     path("", include(router.urls)),
@@ -24,4 +24,6 @@ urlpatterns = [
     path("billing/", views.billing_complete),
 
     path("seat/", views.seat_customer),  
+
+    path("update_table_status/<int:table_id>/", views.update_table_status),
 ]

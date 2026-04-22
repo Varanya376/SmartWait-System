@@ -9,12 +9,22 @@ import { fetchWaitTime, subscribeToAlert } from "../services/api";
 function calculateScore(restaurant, wait) {
   let score = 100;
 
-  score -= (restaurant.distance ?? 5) * 15;
-  score += (restaurant.rating || 0) * 5;
-  score -= (restaurant.crowd || 0) * 5;
-  score -= (wait || 10);
+  // wait time (important)
+  score -= (wait ?? 20) * 1.5;
 
-  return Math.max(0, score);
+  // distance (reduced impact)
+  score -= (restaurant.distance ?? 5) * 4;
+
+  // rating boost
+  score += (restaurant.rating || 3) * 10;
+
+  // crowd penalty
+  score -= (restaurant.crowd || 3) * 4;
+
+  // bonus for low wait
+  if ((wait ?? 20) <= 5) score += 10;
+
+  return Math.max(0, Math.min(100, Math.round(score)));
 }
 
 // Distance function
@@ -180,7 +190,7 @@ useEffect(() => {
         <BackButton />
 
       <div className="header">
-        <h1 className="app-title">SmartWait</h1>
+        <h1 className="app-title">Synq</h1>
         <p className="tagline">RESTAURANT DETAILS</p>
       </div>
 

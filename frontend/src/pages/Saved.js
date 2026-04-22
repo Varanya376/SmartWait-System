@@ -23,7 +23,7 @@ function Saved({ saved, toggleSave }) {
       <BackButton />
 
       <div className="header">
-        <h1 className="app-title">SmartWait</h1>
+        <h1 className="app-title">Synq</h1>
         <p className="tagline">YOUR SAVED RESTAURANTS</p>
       </div>
 
