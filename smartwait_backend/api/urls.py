@@ -23,5 +23,5 @@ urlpatterns = [
 
     path("billing/", views.billing_complete),
 
-    path("seat/", views.seat_customer),  # ✅ ADD THIS LINE
+    path("seat/", views.seat_customer),  
 ]

@@ -65,7 +65,7 @@ def check_and_send_notifications(restaurant, wait_time):
 
     for sub in subscriptions:
 
-        # ✅ WAIT TIME ALERT (prevent spam)
+        # WAIT TIME ALERT (prevent spam)
         already_sent_wait = Notification.objects.filter(
             user=sub.user,
             restaurant=restaurant,
@@ -79,7 +79,7 @@ def check_and_send_notifications(restaurant, wait_time):
                 message=f"⏰ {restaurant.name} wait time is now {wait_time} mins!"
             )
 
-        # ✅ TABLE READY ALERT (prevent spam)
+        # TABLE READY ALERT (prevent spam)
         user_queue = Queue.objects.filter(
             restaurant=restaurant,
             name=sub.user.username,
@@ -152,7 +152,7 @@ def send_realtime_update(restaurant, event, wait_time):
 def get_safe_wait_time(restaurant):
     result = calculate_wait_time(restaurant)
 
-    wait_time = result["wait_time"]   # ✅ extract number
+    wait_time = result["wait_time"]   # exact wait time from model
 
     queue_count = Queue.objects.filter(
         restaurant=restaurant,
@@ -208,7 +208,7 @@ User = get_user_model()
 def register(request):
     email = request.data.get("email")
     password = request.data.get("password")
-    name = request.data.get("name")   # ✅ ADD HERE
+    name = request.data.get("name")   
     role = request.data.get("role", "customer")
 
     if not email or not password:
@@ -217,14 +217,14 @@ def register(request):
     if User.objects.filter(email=email).exists():
         return Response({"error": "User already exists"}, status=400)
 
-    # ✅ Create user properly
+    # Create user 
     user = User.objects.create_user(
         username=email,
         email=email,
         password=password
     )
 
-    # ✅ ADD THESE LINES RIGHT AFTER CREATION
+    
     user.first_name = name
     user.role = role
     user.save()
@@ -292,7 +292,7 @@ def login_view(request):
     if not user:
         return Response({"error": "Invalid credentials"}, status=400)
 
-    # 🔥 AUTHENTICATE USING USERNAME
+    # AUTHENTICATE USING USERNAME
     authenticated_user = authenticate(
         request,
         username=user.username,
@@ -441,7 +441,7 @@ def leave_queue(request):
     entry.status = "left"
     entry.save()
 
-    # CRITICAL
+  
     process_queue(restaurant)
 
     wait_time = get_safe_wait_time(restaurant)
@@ -470,7 +470,7 @@ def predict_wait(request, restaurant_id):
         status="waiting"
     ).count()
 
-    # 🔥 NEVER allow unrealistic wait if queue exists
+    # Never allow unrealistic wait if queue exists
     if queue_length > 0:
          wait_time = max(5, round(wait_time))
     else:
@@ -553,15 +553,15 @@ def staff_dashboard(request, restaurant_id):
     if not request.user.is_authenticated:
         return Response({"error": "Not logged in"}, status=401)
 
-    # 🔐 ROLE CHECK
+    # ROLE CHECK
     if request.user.role != "staff":
         return Response({"error": "Unauthorized"}, status=403)
 
-    # 🔐 USER MUST HAVE RESTAURANT
+    # USER MUST HAVE RESTAURANT
     if not request.user.restaurant:
         return Response({"error": "No restaurant assigned"}, status=403)
 
-    # 🔐 MUST MATCH RESTAURANT ID
+    # MUST MATCH RESTAURANT ID
     if request.user.restaurant.id != int(restaurant_id):
         return Response({"error": "Wrong restaurant"}, status=403)
 
@@ -569,7 +569,7 @@ def staff_dashboard(request, restaurant_id):
 
     tables = Table.objects.filter(restaurant=restaurant)
 
-    # 🔥 FIX: ensure positions are correct BEFORE sending to frontend
+    # update queue positions before sending data to ensure consistency
     update_queue_positions(restaurant)
 
     queue = Queue.objects.filter(

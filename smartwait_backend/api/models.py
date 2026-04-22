@@ -117,7 +117,7 @@ class Prediction(models.Model):
     restaurant = models.ForeignKey(Restaurant, on_delete=models.CASCADE)
     wait_time = models.FloatField()
 
-    # 🔥 ML features
+    # ML features
     queue_length = models.IntegerField()
     occupied_tables = models.IntegerField()
     total_tables = models.IntegerField()   

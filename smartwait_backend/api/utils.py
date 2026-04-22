@@ -89,7 +89,7 @@ def calculate_wait_time(restaurant):
         }
 
     # -------------------------------
-    # 🤖 ML PREDICTION
+    # ML PREDICTION
     # -------------------------------
     if model:
         try:
@@ -151,7 +151,7 @@ def calculate_wait_time(restaurant):
         
 
     # -------------------------------
-    # 🔁 FALLBACK
+    # FALLBACK
     # -------------------------------
     free_tables = total_tables - occupied_tables
 

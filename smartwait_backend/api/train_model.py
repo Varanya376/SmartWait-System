@@ -27,7 +27,7 @@ def train():
     logger.info(f"Training on {len(df)} records")
 
     # -------------------------------
-    # 🧹 CLEAN DATA
+    # CLEAN DATA
     # -------------------------------
     df = df[[
         "occupied_tables",
@@ -37,7 +37,7 @@ def train():
         "created_at"
     ]].copy()
 
-    # 🧠 TIME FEATURES
+    # TIME FEATURES
     df["hour"] = pd.to_datetime(df["created_at"]).dt.hour
     df["day_of_week"] = pd.to_datetime(df["created_at"]).dt.dayofweek
 
@@ -60,7 +60,7 @@ def train():
         return
 
     # -------------------------------
-    # 🎯 FEATURES
+    # FEATURES
     # -------------------------------
     df["occupancy_rate"] = df["occupied_tables"] / df["total_tables"]
     df["queue_pressure"] = df["queue_length"] / (df["total_tables"] + 1)
@@ -78,7 +78,7 @@ def train():
     y = df["wait_time"]
 
     # -------------------------------
-    # 🧠 TRAIN
+    # TRAIN
     # -------------------------------
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42

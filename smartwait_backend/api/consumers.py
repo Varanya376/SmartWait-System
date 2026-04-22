@@ -23,6 +23,6 @@ class QueueConsumer(AsyncWebsocketConsumer):
             "message": event["message"],
             "wait_time": event["wait_time"],
             "restaurant_id": event["restaurant_id"],
-            "queue": event.get("queue", []),   # ✅ ADD THIS
-            "tables": event.get("tables", [])  # (optional but good)
+            "queue": event.get("queue", []),   
+            "tables": event.get("tables", [])
     }))
