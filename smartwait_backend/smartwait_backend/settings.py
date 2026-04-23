@@ -117,6 +117,8 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = os.getenv("EMAIL_USER")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_PASS")
 
+print("EMAIL USER:", os.getenv("EMAIL_USER"))
+
 # Internationalization
 # https://docs.djangoproject.com/en/4.2/topics/i18n/
 
