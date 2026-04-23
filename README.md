@@ -1,156 +1,253 @@
-Synq System 🍽️
+# 🍽️ Synq System
 
-AI-powered Restaurant Queue & Recommendation Platform
+Synq is a full-stack web application designed to improve restaurant queue management using real-time updates and machine learning-based predictions.
 
-Overview
+The system consists of:
 
-Synq is a full-stack web application designed to improve restaurant queue management by combining real-time wait-time prediction, smart recommendations, and interactive user features.
+- A Django backend  
+- A React frontend  
 
-The system enables users to:
+This guide provides step-by-step instructions to set up and run the project locally.
 
-- View restaurants and their estimated wait times
-- Join queues remotely
-- Receive intelligent recommendations
-- Interact with a dynamic frontend interface
+---
 
-The backend uses machine learning models to predict wait times based on historical and real-time data.
+## Project Structure
 
-🛠️ Tech Stack
-
-Frontend: React.js
-          JavaScript,CSS
-
-Backend: Django
-         Django REST Framework
-
-Database: SQLite
-
-Machine Learning: Scikit-learn
-                  Pre-trained .pkl models
-
-
-Project Structure
-
+```
 SmartWait-System/
 
-frontend/ → React application
-smartwait_backend/ → Django backend
-     - api/ → Core logic, models, views
-     - model.pkl → ML model
-     - wait_time_model.pkl → Wait-time prediction model
-     - db.sqlite3 → Database
+├── smartwait_backend/        # Django backend
+│   ├── manage.py
+│   ├── requirements.txt
+│   ├── api/                 # Core logic (models, views, ML, queue system)
+│   ├── model.pkl
+│   ├── wait_time_model.pkl
+│
+├── frontend/                # React frontend
+```
 
-Prerequisites: Make sure the following are installed:
+---
 
-Python (3.9 or higher)
-Node.js (LTS version recommended)
-npm (comes with Node.js)
-Git
+## System Requirements
 
-Installation & Setup Guide (Windows): Follow these steps exactly in order.
+### Backend
+- Python 3.9 or higher  
+- pip  
+- Virtual environment (venv)  
 
-STEP 1: Clone the Repository
+### Frontend
+- Node.js (LTS recommended)  
+- npm  
+
+### General
+- Git  
+- Modern web browser (Chrome recommended)  
+
+---
+
+## Installation and Setup
+
+### 1. Clone the Repository
+
+```
 git clone https://github.com/Varanya376/SmartWait-System.git
 cd SmartWait-System
+```
 
-STEP 2: Backend Setup (Django)
+---
 
-Open Command Prompt / Terminal
+### 2. Create Virtual Environment (OUTSIDE project folder)
 
-1. Navigate to backend folder - cd smartwait_backend
-2. Create virtual environment - python -m venv venv
-3. Activate virtual environment
+**Windows**
+```
+python -m venv venv
+```
 
-Windows:
+**macOS/Linux**
+```
+python3 -m venv venv
+```
 
+---
+
+### 3. Activate Virtual Environment
+
+**Windows**
+```
 venv\Scripts\activate
+```
 
-Mac/Linux (if needed): source venv/bin/activate
+**macOS/Linux**
+```
+source venv/bin/activate
+```
 
-4. Install dependencies: pip install -r requirements.txt
-5. Apply database migrations: python manage.py migrate
-6. (Optional) Create admin user: python manage.py createsuperuser
-7. Run backend server: python manage.py runserver
+---
 
-Backend will run at:
-http://127.0.0.1:8000/
+### 4. Install Backend Dependencies
 
-STEP 3: Frontend Setup (React)
+```
+cd smartwait_backend
+pip install -r requirements.txt
+pip install daphne channels python-dotenv
+```
 
-Open a new terminal window (keep backend running)
+---
 
-1. Navigate to frontend: cd frontend
-2. Install dependencies: npm install
-3. Start frontend server: npm start
+## 🔐 Environment Variables
 
-Frontend will run at:
-http://localhost:3000/
+Create a `.env` file inside:
 
-Running the Full Application:-
-Start backend server
-Start frontend server
-Open browser → http://localhost:3000/
+```
+smartwait_backend/
+```
 
-The frontend will automatically connect to the backend API.
+Add:
 
-Machine Learning Models: The backend includes pre-trained models:-
+```
 
-model.pkl
-wait_time_model.pkl
+EMAIL_USER=varanya.376@gmail.com
+EMAIL_PASS=ifhgbwrpswwxpxxl
+```
 
-These are used to:
+⚠️ Notes:
+- Use a Gmail **App Password**, not your real password  
+- If email is not configured, OTP will be printed in the terminal  
 
-Predict restaurant wait times
-Improve recommendation accuracy
+---
 
-No additional training is required to run the system.
+## 🗄️ Database Setup
 
-API Endpoints (Examples)
-/api/restaurants/ → Fetch restaurant list
-/api/predict/ → Get wait-time prediction
-/api/join-queue/ → Join queue
-
-
-Admin Dashboard: Access Django admin panel:-
-
-http://127.0.0.1:8000/admin/
-
-Use the credentials created with: python manage.py createsuperuser
-
-Important Notes:-
-
-Always start backend before frontend
-Ensure virtual environment is activated before running backend
-Do NOT delete .pkl model files (required for predictions)
-
-
-This system is intended to run locally.
-
-Demo Usage Flow:-
-Open frontend (localhost:3000)
-Browse restaurant listings
-View predicted wait times
-Join a queue
-Observe real-time updates
-
-Key Features:-
-Real-time wait-time prediction
-Machine learning-based recommendations
-Queue management system
-User authentication
-Admin dashboard
-
-Conclusion: SmartWait demonstrates the integration of:-
-
-Full-stack web development
-Machine learning models
-Real-time data handling
-
-The system is designed for local execution and showcases a scalable architecture for intelligent queue management.
-
-notes:
-add npm install to start frontend first step
-
-pip install daphne
-pip install channels
+```
 python manage.py migrate
+```
+
+(Optional)
+```
+python manage.py createsuperuser
+```
+
+---
+
+## ▶️ Running the Application
+
+### Start Backend
+
+```
+python manage.py runserver
+```
+
+Backend runs at:
+```
+http://127.0.0.1:8000/
+```
+
+---
+
+### Start Frontend
+
+Open a new terminal:
+
+```
+cd frontend
+npm install
+npm start
+```
+
+Frontend runs at:
+```
+http://localhost:3000/
+```
+
+---
+
+## Configuration
+
+- Default database: SQLite3  
+- Pre-trained ML models included  
+- No additional setup required  
+
+---
+
+## Features
+
+- Real-time queue updates (WebSockets)  
+- AI-based wait-time prediction  
+- Smart restaurant recommendations  
+- Queue join/leave system  
+- Notification system (OTP + alerts)  
+- Admin dashboard  
+
+---
+
+## Usage Notes
+
+- Activate virtual environment before running backend  
+- Run backend and frontend in separate terminals  
+- Ensure ports are available:  
+  - 8000 → Backend  
+  - 3000 → Frontend  
+
+---
+
+## Demo Flow
+
+1. Open frontend (localhost:3000)  
+2. Browse restaurants  
+3. View wait-time predictions  
+4. Join queue  
+5. Observe real-time updates  
+
+---
+
+## Troubleshooting
+
+### Backend not starting
+- Ensure virtual environment is activated  
+
+---
+
+### No restaurants showing
+```
+python manage.py migrate
+```
+
+(Data is auto-seeded automatically)
+
+---
+
+### OTP / Email not working
+- Check `.env` file exists  
+- Install dotenv:
+
+```
+pip install python-dotenv
+```
+
+- If email not configured → OTP appears in terminal  
+
+---
+
+### Frontend issues
+
+```
+rm -rf node_modules
+npm install
+```
+
+---
+
+### Port conflicts
+- Change port or stop other services  
+
+---
+
+## Final Note
+
+Synq demonstrates:
+
+- Full-stack web development  
+- Machine learning integration  
+- Real-time systems using WebSockets  
+
+The system is designed to run locally and is fully self-contained for demonstration and evaluation.
