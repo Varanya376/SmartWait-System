@@ -6,12 +6,49 @@ function Saved({ saved, toggleSave }) {
   const [restaurants, setRestaurants] = useState([]);
 
   useEffect(() => {
-    fetch("http://localhost:8000/api/restaurants/")
-      .then((res) => res.json())
-      .then((data) => {
-        setRestaurants(data);
-      })
-      .catch((err) => console.error(err));
+    async function loadData() {
+      try {
+        // Fetch all restaurants
+        const res = await fetch("http://localhost:8000/api/restaurants/");
+        const data = await res.json();
+
+        // Enrich with wait time + ML data (same as Home)
+        const enriched = await Promise.all(
+          data.map(async (r) => {
+            try {
+              const waitRes = await fetch(
+                `http://localhost:8000/api/predict-wait/${r.id}/`
+              );
+              const waitData = await waitRes.json();
+
+              return {
+                ...r,
+                wait_time: waitData.wait_time,
+                confidence: waitData.confidence,
+                factors: waitData.factors,
+                mlUsed: waitData.ml_used,
+
+                // keep consistent with Home styling
+                distance: Math.random() * 5,
+                rating: Number((Math.random() * 2 + 3).toFixed(1)),
+                crowd: Math.floor(Math.random() * 5) + 1,
+              };
+            } catch {
+              return {
+                ...r,
+                wait_time: 20,
+              };
+            }
+          })
+        );
+
+        setRestaurants(enriched);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    loadData();
   }, []);
 
   const savedRestaurants = restaurants.filter((r) =>
@@ -32,12 +69,9 @@ function Saved({ saved, toggleSave }) {
           savedRestaurants.map((r) => (
             <RestaurantCard
               key={r.id}
-              restaurant={{
-                ...r,
-                distance: Math.random() * 5,
-                rating: Number((Math.random() * 2 + 3).toFixed(1)),
-                crowd: Math.floor(Math.random() * 5) + 1,
-              }}
+              restaurant={r}
+              factors={r.factors}
+              mlUsed={r.mlUsed}
               saved={saved}
               toggleSave={toggleSave}
             />
@@ -53,3 +87,4 @@ function Saved({ saved, toggleSave }) {
 }
 
 export default Saved;
+
