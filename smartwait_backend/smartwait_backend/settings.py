@@ -17,7 +17,7 @@ import os
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 from dotenv import load_dotenv
-load_dotenv(BASE_DIR / ".env")
+load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
@@ -117,7 +117,9 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = os.getenv("EMAIL_USER")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_PASS")
 
-print("EMAIL USER:", os.getenv("EMAIL_USER"))
+DEFUALT_FROM_EMAIL = EMAIL_HOST_USER
+
+print("EMAIL USER:", EMAIL_HOST_USER)
 
 # Internationalization
 # https://docs.djangoproject.com/en/4.2/topics/i18n/
